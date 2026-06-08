@@ -1,0 +1,396 @@
+# ============================================================
+# Logistic Regression – Airline Customer Satisfaction Prediction
+# ============================================================
+
+# Project Goal:
+# Build a Logistic Regression model to predict airline passenger satisfaction
+# using passenger survey and travel experience data.
+
+# ============================================================
+# 1. Import Required Libraries
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.metrics import (
+    confusion_matrix,
+    ConfusionMatrixDisplay,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    classification_report
+)
+
+import warnings
+warnings.filterwarnings("ignore")
+
+
+# ============================================================
+# 2. Load the Dataset
+# ============================================================
+
+# Make sure the CSV file is in the same folder as this notebook.
+df = pd.read_csv("airline_customer_satisfaction.csv")
+
+# Clean column names
+df.columns = df.columns.str.strip()
+
+print("Dataset Shape:", df.shape)
+display(df.head())
+
+print("\nDataset Information:")
+df.info()
+
+print("\nMissing Values:")
+display(df.isnull().sum())
+
+print("\nTarget Variable Distribution:")
+display(df["satisfaction"].value_counts())
+
+
+# ============================================================
+# 3. Basic Exploratory Data Analysis
+# ============================================================
+
+# Satisfaction count plot
+plt.figure(figsize=(6, 4))
+sns.countplot(data=df, x="satisfaction")
+plt.title("Distribution of Passenger Satisfaction")
+plt.xlabel("Satisfaction")
+plt.ylabel("Count")
+plt.show()
+
+
+# Numerical summary
+print("Numerical Summary:")
+display(df.describe())
+
+
+# Correlation heatmap for numerical variables
+numeric_df = df.select_dtypes(include=["int64", "float64"])
+
+plt.figure(figsize=(14, 10))
+sns.heatmap(numeric_df.corr(), cmap="coolwarm", annot=False)
+plt.title("Correlation Heatmap of Numerical Features")
+plt.show()
+
+
+# Satisfaction by customer type
+plt.figure(figsize=(7, 4))
+sns.countplot(data=df, x="Customer Type", hue="satisfaction")
+plt.title("Satisfaction by Customer Type")
+plt.xlabel("Customer Type")
+plt.ylabel("Count")
+plt.show()
+
+
+# Satisfaction by class
+plt.figure(figsize=(7, 4))
+sns.countplot(data=df, x="Class", hue="satisfaction")
+plt.title("Satisfaction by Travel Class")
+plt.xlabel("Class")
+plt.ylabel("Count")
+plt.show()
+
+
+# ============================================================
+# 4. Prepare Target Variable
+# ============================================================
+
+# Convert satisfaction into binary values:
+# satisfied = 1
+# dissatisfied or neutral/dissatisfied = 0
+
+df["satisfaction_binary"] = (
+    df["satisfaction"]
+    .astype(str)
+    .str.strip()
+    .str.lower()
+    .map({
+        "satisfied": 1,
+        "dissatisfied": 0,
+        "neutral or dissatisfied": 0
+    })
+)
+
+# Remove rows where target could not be mapped
+df = df.dropna(subset=["satisfaction_binary"])
+
+df["satisfaction_binary"] = df["satisfaction_binary"].astype(int)
+
+print("Encoded Target Distribution:")
+display(df["satisfaction_binary"].value_counts())
+
+
+# ============================================================
+# 5. Define Features and Target
+# ============================================================
+
+X = df.drop(columns=["satisfaction", "satisfaction_binary"])
+y = df["satisfaction_binary"]
+
+# Identify categorical and numerical columns
+categorical_features = X.select_dtypes(include=["object"]).columns.tolist()
+numerical_features = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
+
+print("Categorical Features:")
+print(categorical_features)
+
+print("\nNumerical Features:")
+print(numerical_features)
+
+
+# ============================================================
+# 6. Train/Test Split
+# ============================================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+print("Training Set Shape:", X_train.shape)
+print("Testing Set Shape:", X_test.shape)
+
+
+# ============================================================
+# 7. Preprocessing Pipeline
+# ============================================================
+
+# Numerical features:
+# - Fill missing values using median
+# - Scale values for logistic regression
+
+numeric_transformer = Pipeline(steps=[
+    ("imputer", SimpleImputer(strategy="median")),
+    ("scaler", StandardScaler())
+])
+
+# Categorical features:
+# - Fill missing values using most frequent category
+# - Convert categories into numeric form using One-Hot Encoding
+
+categorical_transformer = Pipeline(steps=[
+    ("imputer", SimpleImputer(strategy="most_frequent")),
+    ("onehot", OneHotEncoder(handle_unknown="ignore", drop="first"))
+])
+
+# Combine preprocessing steps
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("num", numeric_transformer, numerical_features),
+        ("cat", categorical_transformer, categorical_features)
+    ]
+)
+
+
+# ============================================================
+# 8. Build Logistic Regression Model
+# ============================================================
+
+logistic_model = Pipeline(steps=[
+    ("preprocessor", preprocessor),
+    ("classifier", LogisticRegression(max_iter=1000, solver="lbfgs"))
+])
+
+# Train the model
+logistic_model.fit(X_train, y_train)
+
+print("Logistic Regression model trained successfully.")
+
+
+# ============================================================
+# 9. Make Predictions
+# ============================================================
+
+y_pred = logistic_model.predict(X_test)
+y_pred_proba = logistic_model.predict_proba(X_test)[:, 1]
+
+
+# ============================================================
+# 10. Model Evaluation
+# ============================================================
+
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred)
+roc_auc = roc_auc_score(y_test, y_pred_proba)
+
+print("Model Performance Metrics")
+print("-------------------------")
+print(f"Accuracy:  {accuracy:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall:    {recall:.4f}")
+print(f"F1 Score:  {f1:.4f}")
+print(f"ROC-AUC:   {roc_auc:.4f}")
+
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred, target_names=["Dissatisfied", "Satisfied"]))
+
+
+# ============================================================
+# 11. Confusion Matrix
+# ============================================================
+
+cm = confusion_matrix(y_test, y_pred)
+
+disp = ConfusionMatrixDisplay(
+    confusion_matrix=cm,
+    display_labels=["Dissatisfied", "Satisfied"]
+)
+
+disp.plot(cmap="Blues")
+plt.title("Confusion Matrix - Logistic Regression")
+plt.show()
+
+print("Confusion Matrix:")
+print(cm)
+
+
+# ============================================================
+# 12. Interpret Logistic Regression Coefficients
+# ============================================================
+
+# Get feature names after preprocessing
+feature_names = logistic_model.named_steps["preprocessor"].get_feature_names_out()
+
+# Get model coefficients
+coefficients = logistic_model.named_steps["classifier"].coef_[0]
+
+coef_df = pd.DataFrame({
+    "Feature": feature_names,
+    "Coefficient": coefficients,
+    "Odds_Ratio": np.exp(coefficients)
+})
+
+# Sort by coefficient strength
+coef_df["Absolute_Coefficient"] = coef_df["Coefficient"].abs()
+coef_df = coef_df.sort_values(by="Absolute_Coefficient", ascending=False)
+
+print("Top 15 Most Influential Features:")
+display(coef_df.head(15))
+
+
+# Positive drivers of satisfaction
+positive_drivers = coef_df.sort_values(by="Coefficient", ascending=False).head(10)
+
+print("Top Positive Drivers of Satisfaction:")
+display(positive_drivers[["Feature", "Coefficient", "Odds_Ratio"]])
+
+
+# Negative drivers of satisfaction
+negative_drivers = coef_df.sort_values(by="Coefficient", ascending=True).head(10)
+
+print("Top Negative Drivers of Satisfaction:")
+display(negative_drivers[["Feature", "Coefficient", "Odds_Ratio"]])
+
+
+# ============================================================
+# 13. Visualize Top Satisfaction Drivers
+# ============================================================
+
+top_features = pd.concat([
+    positive_drivers[["Feature", "Coefficient"]],
+    negative_drivers[["Feature", "Coefficient"]]
+])
+
+plt.figure(figsize=(10, 7))
+sns.barplot(data=top_features, y="Feature", x="Coefficient")
+plt.title("Top Positive and Negative Drivers of Passenger Satisfaction")
+plt.xlabel("Logistic Regression Coefficient")
+plt.ylabel("Feature")
+plt.axvline(0, color="black", linestyle="--")
+plt.show()
+
+
+# ============================================================
+# 14. Business Interpretation
+# ============================================================
+
+print("Business Interpretation")
+print("-----------------------")
+
+print(f"""
+The Logistic Regression model was used to predict whether a passenger is satisfied or dissatisfied.
+
+The model achieved:
+- Accuracy: {accuracy:.2%}
+- Precision: {precision:.2%}
+- Recall: {recall:.2%}
+- F1 Score: {f1:.2%}
+- ROC-AUC: {roc_auc:.2%}
+
+Precision shows how many passengers predicted as satisfied were actually satisfied.
+Recall shows how many truly satisfied passengers the model successfully identified.
+
+The most important positive drivers of satisfaction are shown in the coefficient table.
+Features with positive coefficients increase the probability of satisfaction, while features
+with negative coefficients reduce the probability of satisfaction.
+""")
+
+
+# ============================================================
+# 15. Business Recommendations
+# ============================================================
+
+print("Business Recommendations")
+print("------------------------")
+
+print("""
+1. Improve in-flight entertainment:
+   In-flight entertainment appears to be one of the strongest positive drivers of satisfaction.
+   The airline should invest in better entertainment screens, updated movies, music, and digital content.
+
+2. Improve seat comfort:
+   Seat comfort has a positive relationship with passenger satisfaction.
+   Better seats, leg support, and cabin comfort can improve customer experience.
+
+3. Strengthen online booking and online boarding:
+   Digital service experience is important because passengers interact with the airline before boarding.
+   The airline should improve its mobile app, website booking flow, and online boarding process.
+
+4. Focus on loyal customers:
+   Disloyal customers are more likely to be dissatisfied.
+   The airline should create loyalty rewards, personalized offers, and better follow-up services.
+
+5. Reduce delays:
+   Arrival and departure delays negatively affect satisfaction.
+   The airline should improve operational efficiency, communicate delays early, and compensate affected passengers where necessary.
+""")
+
+
+# ============================================================
+# 16. Model Limitations and Next Steps
+# ============================================================
+
+print("Limitations and Next Steps")
+print("--------------------------")
+
+print("""
+Limitations:
+- Logistic Regression assumes a linear relationship between predictors and the log-odds of satisfaction.
+- Some customer satisfaction factors may interact with each other, but this simple model does not fully capture interactions.
+- Survey ratings may contain subjective bias.
+
+Next Steps:
+- Compare Logistic Regression with Random Forest, XGBoost, or Gradient Boosting models.
+- Tune model hyperparameters using cross-validation.
+- Deploy the model as a simple dashboard for airline customer experience teams.
+- Collect newer customer feedback data to keep the model updated.
+""")
